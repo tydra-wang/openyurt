@@ -17,12 +17,14 @@ limitations under the License.
 package options
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
 	"time"
 
 	"github.com/spf13/pflag"
+	utilnet "k8s.io/utils/net"
 
 	"github.com/openyurtio/openyurt/pkg/projectinfo"
 	"github.com/openyurtio/openyurt/pkg/yurthub/storage/disk"
@@ -30,8 +32,11 @@ import (
 )
 
 const (
-	DummyIfCIDR   = "169.254.0.0/16"
-	ExclusiveCIDR = "169.254.31.0/24"
+	DummyIfCIDR4    = "169.254.0.0/16"
+	DummyIfCIDR6    = "fe80::/10"
+	DefaultDummyIP4 = "169.254.2.1"
+	DefaultDummyIP6 = "fe80::2:1"
+	ExclusiveCIDR   = "169.254.31.0/24"
 )
 
 // YurtHubOptions is the main settings for the yurthub
@@ -90,7 +95,6 @@ func NewYurtHubOptions() *YurtHubOptions {
 		EnableProfiling:           true,
 		EnableDummyIf:             true,
 		EnableIptables:            true,
-		HubAgentDummyIfIP:         "169.254.2.1",
 		HubAgentDummyIfName:       fmt.Sprintf("%s-dummy0", projectinfo.GetHubName()),
 		DiskCachePath:             disk.CacheBaseDir,
 		AccessServerThroughHub:    true,
@@ -103,8 +107,8 @@ func NewYurtHubOptions() *YurtHubOptions {
 	return o
 }
 
-// ValidateOptions validates YurtHubOptions
-func ValidateOptions(options *YurtHubOptions) error {
+// Validate validates YurtHubOptions
+func (options *YurtHubOptions) Validate() error {
 	if len(options.NodeName) == 0 {
 		return fmt.Errorf("node name is empty")
 	}
@@ -125,7 +129,7 @@ func ValidateOptions(options *YurtHubOptions) error {
 		return fmt.Errorf("working mode %s is not supported", options.WorkingMode)
 	}
 
-	if err := verifyDummyIP(options.HubAgentDummyIfIP); err != nil {
+	if err := options.verifyDummyIP(); err != nil {
 		return fmt.Errorf("dummy ip %s is not invalid, %w", options.HubAgentDummyIfIP, err)
 	}
 
@@ -169,20 +173,37 @@ func (o *YurtHubOptions) AddFlags(fs *pflag.FlagSet) {
 }
 
 // verifyDummyIP verify the specified ip is valid or not
-func verifyDummyIP(dummyIP string) error {
-	//169.254.2.1/32
+func (o *YurtHubOptions) verifyDummyIP() error {
+	listenIPv6 := utilnet.IsIPv6String(o.YurtHubHost)
+	if o.HubAgentDummyIfIP == "" {
+		if listenIPv6 {
+			o.HubAgentDummyIfIP = DefaultDummyIP6
+		} else {
+			o.HubAgentDummyIfIP = DefaultDummyIP4
+		}
+		return nil
+	}
+
+	dummyIP := o.HubAgentDummyIfIP
 	dip := net.ParseIP(dummyIP)
 	if dip == nil {
 		return fmt.Errorf("dummy ip %s is invalid", dummyIP)
 	}
+	isIPv6 := utilnet.IsIPv6(dip)
 
-	_, dummyIfIPNet, err := net.ParseCIDR(DummyIfCIDR)
-	if err != nil {
-		return fmt.Errorf("cidr(%s) is invalid, %w", DummyIfCIDR, err)
+	if isIPv6 != listenIPv6 {
+		return errors.New("dummy ip and bind ip in dual stack")
+	}
+
+	var dummyIfIPNet *net.IPNet
+	if isIPv6 {
+		_, dummyIfIPNet, _ = net.ParseCIDR(DummyIfCIDR6)
+	} else {
+		_, dummyIfIPNet, _ = net.ParseCIDR(DummyIfCIDR4)
 	}
 
 	if !dummyIfIPNet.Contains(dip) {
-		return fmt.Errorf("dummy ip %s is not in cidr(%s)", dummyIP, DummyIfCIDR)
+		return fmt.Errorf("dummy ip %s is not in cidr(%s)", dummyIP, dummyIfIPNet.String())
 	}
 
 	_, exclusiveIPNet, err := net.ParseCIDR(ExclusiveCIDR)

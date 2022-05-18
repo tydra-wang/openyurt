@@ -170,7 +170,7 @@ func healthz(w http.ResponseWriter, _ *http.Request) {
 
 // create a certificate manager for the yurthub server and run the csr approver for both yurthub
 // and generate a TLS configuration
-func GenUseCertMgrAndTLSConfig(restConfigMgr *rest.RestConfigManager, certificateMgr interfaces.YurtCertificateManager, certDir, proxyServerSecureDummyAddr string, stopCh <-chan struct{}) (*tls.Config, error) {
+func GenUseCertMgrAndTLSConfig(restConfigMgr *rest.RestConfigManager, certificateMgr interfaces.YurtCertificateManager, certDir, dummyIP string, stopCh <-chan struct{}) (*tls.Config, error) {
 	cfg := restConfigMgr.GetRestConfig(false)
 	if cfg == nil {
 		return nil, fmt.Errorf("failed to prepare rest config based ong hub agent client certificate")
@@ -181,7 +181,7 @@ func GenUseCertMgrAndTLSConfig(restConfigMgr *rest.RestConfigManager, certificat
 		return nil, err
 	}
 	// create a certificate manager for the yurthub server and run the csr approver for both yurthub
-	serverCertMgr, err := certmanager.NewYurtHubServerCertManager(clientSet, certDir, proxyServerSecureDummyAddr)
+	serverCertMgr, err := certmanager.NewYurtHubServerCertManager(clientSet, certDir, dummyIP)
 	if err != nil {
 		return nil, err
 	}

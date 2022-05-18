@@ -36,6 +36,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
+	utilnet "k8s.io/utils/net"
 
 	"github.com/openyurtio/openyurt/cmd/yurthub/app/options"
 	"github.com/openyurtio/openyurt/pkg/projectinfo"
@@ -50,6 +51,7 @@ import (
 	"github.com/openyurtio/openyurt/pkg/yurthub/kubernetes/serializer"
 	"github.com/openyurtio/openyurt/pkg/yurthub/storage/factory"
 	"github.com/openyurtio/openyurt/pkg/yurthub/util"
+
 	yurtcorev1alpha1 "github.com/openyurtio/yurt-app-manager-api/pkg/yurtappmanager/apis/apps/v1alpha1"
 	yurtclientset "github.com/openyurtio/yurt-app-manager-api/pkg/yurtappmanager/client/clientset/versioned"
 	"github.com/openyurtio/yurt-app-manager-api/pkg/yurtappmanager/client/clientset/versioned/fake"
@@ -67,6 +69,7 @@ type YurtHubConfiguration struct {
 	YurtHubProxyServerSecureAddr      string
 	YurtHubProxyServerDummyAddr       string
 	YurtHubProxyServerSecureDummyAddr string
+	DummyIP                           string
 	GCFrequency                       int
 	CertMgrMode                       string
 	KubeletRootCAFilePath             string
@@ -119,8 +122,14 @@ func Complete(options *options.YurtHubOptions) (*YurtHubConfiguration, error) {
 	hubServerAddr := net.JoinHostPort(options.YurtHubHost, options.YurtHubPort)
 	proxyServerAddr := net.JoinHostPort(options.YurtHubHost, options.YurtHubProxyPort)
 	proxySecureServerAddr := net.JoinHostPort(options.YurtHubHost, options.YurtHubProxySecurePort)
-	proxyServerDummyAddr := net.JoinHostPort(options.HubAgentDummyIfIP, options.YurtHubProxyPort)
-	proxySecureServerDummyAddr := net.JoinHostPort(options.HubAgentDummyIfIP, options.YurtHubProxySecurePort)
+	var proxyServerDummyAddr, proxySecureServerDummyAddr string
+	if utilnet.IsIPv6String(options.HubAgentDummyIfIP) {
+		proxyServerDummyAddr = fmt.Sprintf("[%s%%%s]:%s", options.HubAgentDummyIfIP, options.HubAgentDummyIfName, options.YurtHubProxyPort)
+		proxySecureServerDummyAddr = fmt.Sprintf("[%s%%%s]:%s", options.HubAgentDummyIfIP, options.HubAgentDummyIfName, options.YurtHubProxySecurePort)
+	} else {
+		proxyServerDummyAddr = net.JoinHostPort(options.HubAgentDummyIfIP, options.YurtHubProxyPort)
+		proxySecureServerDummyAddr = net.JoinHostPort(options.HubAgentDummyIfIP, options.YurtHubProxySecurePort)
+	}
 	workingMode := util.WorkingMode(options.WorkingMode)
 	sharedFactory, yurtSharedFactory, err := createSharedInformers(fmt.Sprintf("http://%s", proxyServerAddr), options.EnableNodePool)
 	if err != nil {
@@ -144,6 +153,7 @@ func Complete(options *options.YurtHubOptions) (*YurtHubConfiguration, error) {
 		YurtHubProxyServerSecureAddr:      proxySecureServerAddr,
 		YurtHubProxyServerDummyAddr:       proxyServerDummyAddr,
 		YurtHubProxyServerSecureDummyAddr: proxySecureServerDummyAddr,
+		DummyIP:                           options.HubAgentDummyIfIP,
 		GCFrequency:                       options.GCFrequency,
 		CertMgrMode:                       options.CertMgrMode,
 		KubeletRootCAFilePath:             options.KubeletRootCAFilePath,

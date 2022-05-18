@@ -43,14 +43,14 @@ func NewNetworkManager(cfg *config.YurtHubConfiguration) (*NetworkManager, error
 		return nil, fmt.Errorf("configuration for hub agent is nil")
 	}
 
-	ip, port, err := net.SplitHostPort(cfg.YurtHubProxyServerDummyAddr)
+	_, port, err := net.SplitHostPort(cfg.YurtHubProxyServerDummyAddr)
 	if err != nil {
 		return nil, err
 	}
 	m := &NetworkManager{
 		ifController:    NewDummyInterfaceController(),
-		iptablesManager: NewIptablesManager(ip, port),
-		dummyIfIP:       net.ParseIP(ip),
+		iptablesManager: NewIptablesManager(cfg.DummyIP, port),
+		dummyIfIP:       net.ParseIP(cfg.DummyIP),
 		dummyIfName:     cfg.HubAgentDummyIfName,
 		enableIptables:  cfg.EnableIptables,
 	}
@@ -59,7 +59,7 @@ func NewNetworkManager(cfg *config.YurtHubConfiguration) (*NetworkManager, error
 	if err != nil {
 		return nil, err
 	}
-	m.iptablesManager.rules = append(m.iptablesManager.rules, makeupIptablesRules(ip, securePort)...)
+	m.iptablesManager.rules = append(m.iptablesManager.rules, makeupIptablesRules(cfg.DummyIP, securePort)...)
 	if err = m.configureNetwork(); err != nil {
 		return nil, err
 	}
