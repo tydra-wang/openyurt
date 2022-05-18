@@ -31,6 +31,8 @@ import (
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/informers"
 	"k8s.io/klog/v2"
+	"k8s.io/kubernetes/pkg/util/iptables"
+	utilnet "k8s.io/utils/net"
 	"sigs.k8s.io/apiserver-network-proxy/pkg/server"
 )
 
@@ -133,6 +135,11 @@ func (o *ServerOptions) Config() (*config.Config, error) {
 		}
 	}
 
+	if utilnet.IsIPv6String(o.BindAddr) {
+		cfg.IPFamily = iptables.ProtocolIpv6
+	} else {
+		cfg.IPFamily = iptables.ProtocolIpv4
+	}
 	cfg.ListenAddrForAgent = net.JoinHostPort(o.BindAddr, o.TunnelAgentConnectPort)
 	cfg.ListenAddrForMaster = net.JoinHostPort(o.BindAddr, o.SecurePort)
 	cfg.ListenInsecureAddrForMaster = net.JoinHostPort(o.InsecureBindAddr, o.InsecurePort)

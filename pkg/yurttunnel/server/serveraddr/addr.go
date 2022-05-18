@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strconv"
 
 	"github.com/openyurtio/openyurt/pkg/projectinfo"
 	"github.com/openyurtio/openyurt/pkg/yurttunnel/constants"
@@ -54,7 +55,7 @@ func GetTunnelServerAddr(clientset kubernetes.Interface) (string, error) {
 
 	for _, tmpIP := range ips {
 		// we use the first non-loopback IP address.
-		if tmpIP.String() != "127.0.0.1" {
+		if s := tmpIP.String(); s != "127.0.0.1" && s != "::1" {
 			ip = tmpIP
 			break
 		}
@@ -83,7 +84,7 @@ func GetTunnelServerAddr(clientset kubernetes.Interface) (string, error) {
 		return "", errors.New("fail to get the port number")
 	}
 
-	return fmt.Sprintf("%s:%d", host, tcpPort), nil
+	return net.JoinHostPort(host, strconv.Itoa(int(tcpPort))), nil
 }
 
 // GetYurttunelServerDNSandIP gets DNS names and IPS for generating tunnel server certificate.

@@ -30,6 +30,7 @@ import (
 
 	"github.com/spf13/pflag"
 	"k8s.io/klog/v2"
+	utilnet "k8s.io/utils/net"
 	"sigs.k8s.io/apiserver-network-proxy/pkg/agent"
 )
 
@@ -131,7 +132,11 @@ func (o *AgentOptions) Config() (*config.Config, error) {
 	}
 
 	if len(c.AgentIdentifiers) == 0 {
-		c.AgentIdentifiers = fmt.Sprintf("ipv4=%s&host=%s", o.NodeIP, o.NodeName)
+		ipFamily := "ipv4"
+		if utilnet.IsIPv6String(o.NodeIP) {
+			ipFamily = "ipv6"
+		}
+		c.AgentIdentifiers = fmt.Sprintf("%s=%s&host=%s", ipFamily, o.NodeIP, o.NodeName)
 	}
 	klog.Infof("%s is set for agent identifies", c.AgentIdentifiers)
 

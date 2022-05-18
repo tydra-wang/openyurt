@@ -115,7 +115,7 @@ ADD ${binary_name} /usr/local/bin/yurtctl
 EOF
                else
                  yurt_component_name=${binary_name}
-                 base_image="k8s.gcr.io/debian-iptables-${arch}:v11.0.2"
+                 base_image="k8s.gcr.io/debian-iptables-${arch}:v12.0.1"
                  cat <<EOF > "${docker_file_path}"
 FROM ${base_image}
 COPY ${binary_name} /usr/local/bin/${binary_name}

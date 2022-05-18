@@ -29,6 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
+	utilnet "k8s.io/utils/net"
 
 	"github.com/gorilla/mux"
 	"github.com/openyurtio/openyurt/pkg/profile"
@@ -171,4 +172,13 @@ func resolvePorts(portsStr, insecurePort string) []string {
 	}
 
 	return ports
+}
+
+// IsIPv6Request returns if request send by an IPv6 client.
+func IsIPv6Request(req *http.Request) (bool, error) {
+	remoteIP, _, err := net.SplitHostPort(req.RemoteAddr)
+	if err != nil {
+		return false, err
+	}
+	return utilnet.IsIPv6String(remoteIP), nil
 }

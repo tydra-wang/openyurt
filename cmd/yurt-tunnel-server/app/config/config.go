@@ -22,6 +22,7 @@ import (
 
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/kubernetes/pkg/util/iptables"
 )
 
 // Config is the main context object for yurttunel-server
@@ -30,6 +31,7 @@ type Config struct {
 	EnableIptables              bool
 	EnableDNSController         bool
 	IptablesSyncPeriod          int
+	IPFamily                    iptables.Protocol
 	DNSSyncPeriod               int
 	CertDNSNames                []string
 	CertIPs                     []net.IP

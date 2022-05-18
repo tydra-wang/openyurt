@@ -100,7 +100,15 @@ func (plm *localHostProxyMiddleware) WrapHandler(handler http.Handler) http.Hand
 				req.Header.Set(constants.ProxyHostHeaderKey, nodeName)
 			}
 
-			proxyDest = fmt.Sprintf("127.0.0.1:%s", port)
+			loopbackAddr := "127.0.0.1"
+			isIPv6, err := util.IsIPv6Request(req)
+			if err != nil {
+				klog.Errorf("failed to parse remote ip: %v", err)
+			} else if isIPv6 {
+				loopbackAddr = "::1"
+			}
+
+			proxyDest = net.JoinHostPort(loopbackAddr, port)
 			oldHost := req.URL.Host
 			req.Host = proxyDest
 			req.Header.Set("Host", proxyDest)

@@ -39,7 +39,6 @@ import (
 )
 
 const (
-	loopbackAddr              = "127.0.0.1"
 	reqReturnComment          = "return request to access node directly"
 	dnatToTunnelComment       = "dnat to tunnel for access node"
 	yurttunnelServerPortChain = "TUNNEL-PORT"
@@ -80,6 +79,7 @@ type iptablesManager struct {
 	nodeInformer     coreinformer.NodeInformer
 	iptables         iptables.Interface
 	execer           exec.Interface
+	loopbackAddr     string
 	conntrackPath    string
 	secureDnatDest   string
 	insecureDnatDest string
@@ -88,18 +88,18 @@ type iptablesManager struct {
 	syncPeriod       int
 }
 
-// NewIptablesManager creates an IptablesManager; deletes old chains, if any;
+// NewIptablesManagerWithIPFamily creates an IptablesManager; deletes old chains, if any;
 // generates new dnat rules based on IPs of current active nodes; and
 // appends the rules to the iptable.
-func NewIptablesManager(client clientset.Interface,
+func NewIptablesManagerWithIPFamily(client clientset.Interface,
 	nodeInformer coreinformer.NodeInformer,
 	listenAddr string,
 	listenInsecureAddr string,
-	syncPeriod int) IptablesManager {
+	syncPeriod int,
+	ipFamily iptables.Protocol) IptablesManager {
 
-	protocol := iptables.ProtocolIpv4
 	execer := exec.New()
-	iptInterface := iptables.New(execer, protocol)
+	iptInterface := iptables.New(execer, ipFamily)
 
 	if syncPeriod < defaultSyncPeriod {
 		syncPeriod = defaultSyncPeriod
@@ -117,6 +117,12 @@ func NewIptablesManager(client clientset.Interface,
 		syncPeriod:       syncPeriod,
 	}
 
+	if ipFamily == iptables.ProtocolIpv6 {
+		im.loopbackAddr = "::1"
+	} else {
+		im.loopbackAddr = "127.0.0.1"
+	}
+
 	// conntrack setting
 	conntrackPath, err := im.execer.LookPath("conntrack")
 	if err != nil {
@@ -129,6 +135,15 @@ func NewIptablesManager(client clientset.Interface,
 	_ = im.deleteJumpChains(iptablesJumpChains)
 
 	return im
+}
+
+// NewIptablesManager creates an IptablesManager with ipv4 protocol
+func NewIptablesManager(client clientset.Interface,
+	nodeInformer coreinformer.NodeInformer,
+	listenAddr string,
+	listenInsecureAddr string,
+	syncPeriod int) IptablesManager {
+	return NewIptablesManagerWithIPFamily(client, nodeInformer, listenAddr, listenInsecureAddr, syncPeriod, iptables.ProtocolIpv4)
 }
 
 // Run starts the iptablesManager that will updates dnat rules periodically
@@ -357,7 +372,7 @@ func (im *iptablesManager) ensurePortIptables(port string, currentIPs, deletedIP
 			iptables.Prepend,
 			iptables.TableNAT, portChain, reqReturnPortIptablesArgs...)
 		if err != nil {
-			klog.Errorf("could not ensure -j RETURN iptables rule for %s:%s: %v", ip, port, err)
+			klog.Errorf("could not ensure -j RETURN iptables rule for %s: %v", net.JoinHostPort(ip, port), err)
 			return err
 		}
 	}
@@ -378,7 +393,7 @@ func (im *iptablesManager) ensurePortIptables(port string, currentIPs, deletedIP
 		err = im.iptables.DeleteRule(iptables.TableNAT,
 			portChain, deletedIPIptablesArgs...)
 		if err != nil {
-			klog.Errorf("could not delete old iptables rules for %s:%s: %v", ip, port, err)
+			klog.Errorf("could not delete old iptables rules for %s: %v", net.JoinHostPort(ip, port), err)
 			return err
 		}
 	}
@@ -469,13 +484,14 @@ func (im *iptablesManager) clearConnTrackEntriesForIPPort(ip, port string) {
 	output, err := im.execer.
 		Command(im.conntrackPath, parameters...).
 		CombinedOutput()
+	hostport := net.JoinHostPort(ip, port)
 	if err != nil {
-		klog.Errorf("clear conntrack for %s:%s failed: %q, error message: %s",
-			ip, port, string(output), err)
+		klog.Errorf("clear conntrack for %s failed: %q, error message: %s",
+			hostport, string(output), err)
 		return
 	}
-	klog.Infof("clear conntrack for %s:%s successfully: %q",
-		ip, port, string(output))
+	klog.Infof("clear conntrack for %s successfully: %q",
+		hostport, string(output))
 }
 
 func parametersWithFamily(isIPv6 bool, parameters ...string) []string {
@@ -501,7 +517,7 @@ func (im *iptablesManager) syncIptableSetting() {
 	// check if there are new nodes
 	nodesIP := im.getIPOfNodesWithoutAgent()
 	nodesChanged, addedNodesIP, deletedNodesIP := im.getAddedAndDeletedNodes(nodesIP)
-	currentNodesIP := append(nodesIP, loopbackAddr)
+	currentNodesIP := append(nodesIP, im.loopbackAddr)
 
 	// update the iptables setting if necessary
 	err = im.ensurePortsIptables(currentDnatPorts, deletedDnatPorts, currentNodesIP, deletedNodesIP, portMappings)

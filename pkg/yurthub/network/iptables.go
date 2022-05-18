@@ -22,6 +22,7 @@ import (
 	"k8s.io/klog"
 	"k8s.io/kubernetes/pkg/util/iptables"
 	"k8s.io/utils/exec"
+	utilnet "k8s.io/utils/net"
 )
 
 type iptablesRule struct {
@@ -38,6 +39,9 @@ type IptablesManager struct {
 
 func NewIptablesManager(dummyIfIP, dummyIfPort string) *IptablesManager {
 	protocol := iptables.ProtocolIpv4
+	if utilnet.IsIPv6String(dummyIfIP) {
+		protocol = iptables.ProtocolIpv6
+	}
 	execer := exec.New()
 	iptInterface := iptables.New(execer, protocol)
 
@@ -50,6 +54,10 @@ func NewIptablesManager(dummyIfIP, dummyIfPort string) *IptablesManager {
 }
 
 func makeupIptablesRules(ifIP, ifPort string) []iptablesRule {
+	loopbackAddr := "127.0.0.1"
+	if utilnet.IsIPv6String(ifIP) {
+		loopbackAddr = "::1"
+	}
 	return []iptablesRule{
 		// skip connection track for traffic from container to 169.254.2.1:10261
 		{iptables.Prepend, iptables.Table("raw"), iptables.ChainPrerouting, []string{"-p", "tcp", "--dport", ifPort, "--destination", ifIP, "-j", "NOTRACK"}},
@@ -61,16 +69,16 @@ func makeupIptablesRules(ifIP, ifPort string) []iptablesRule {
 		{iptables.Prepend, iptables.Table("raw"), iptables.ChainOutput, []string{"-p", "tcp", "--sport", ifPort, "-s", ifIP, "-j", "NOTRACK"}},
 		// accept traffic from 169.254.2.1:10261
 		{iptables.Prepend, iptables.TableFilter, iptables.ChainOutput, []string{"-p", "tcp", "--sport", ifPort, "-s", ifIP, "-j", "ACCEPT"}},
-		// skip connection track for traffic from container to 127.0.0.1:10261
-		{iptables.Prepend, iptables.Table("raw"), iptables.ChainPrerouting, []string{"-p", "tcp", "--dport", ifPort, "--destination", "127.0.0.1", "-j", "NOTRACK"}},
-		// skip connection track for traffic from host network to 127.0.0.1:10261
-		{iptables.Prepend, iptables.Table("raw"), iptables.ChainOutput, []string{"-p", "tcp", "--dport", ifPort, "--destination", "127.0.0.1", "-j", "NOTRACK"}},
-		// accept traffic to 127.0.0.1:10261
-		{iptables.Prepend, iptables.TableFilter, iptables.ChainInput, []string{"-p", "tcp", "--dport", ifPort, "--destination", "127.0.0.1", "-j", "ACCEPT"}},
-		// skip connection track for traffic from 127.0.0.1:10261
-		{iptables.Prepend, iptables.Table("raw"), iptables.ChainOutput, []string{"-p", "tcp", "--sport", ifPort, "-s", "127.0.0.1", "-j", "NOTRACK"}},
-		// accept traffic from 127.0.0.1:10261
-		{iptables.Prepend, iptables.TableFilter, iptables.ChainOutput, []string{"-p", "tcp", "--sport", ifPort, "-s", "127.0.0.1", "-j", "ACCEPT"}},
+		// skip connection track for traffic from container to localhost:10261
+		{iptables.Prepend, iptables.Table("raw"), iptables.ChainPrerouting, []string{"-p", "tcp", "--dport", ifPort, "--destination", loopbackAddr, "-j", "NOTRACK"}},
+		// skip connection track for traffic from host network to localhost:10261
+		{iptables.Prepend, iptables.Table("raw"), iptables.ChainOutput, []string{"-p", "tcp", "--dport", ifPort, "--destination", loopbackAddr, "-j", "NOTRACK"}},
+		// accept traffic to localhost:10261
+		{iptables.Prepend, iptables.TableFilter, iptables.ChainInput, []string{"-p", "tcp", "--dport", ifPort, "--destination", loopbackAddr, "-j", "ACCEPT"}},
+		// skip connection track for traffic from localhost:10261
+		{iptables.Prepend, iptables.Table("raw"), iptables.ChainOutput, []string{"-p", "tcp", "--sport", ifPort, "-s", loopbackAddr, "-j", "NOTRACK"}},
+		// accept traffic from localhost:10261
+		{iptables.Prepend, iptables.TableFilter, iptables.ChainOutput, []string{"-p", "tcp", "--sport", ifPort, "-s", loopbackAddr, "-j", "ACCEPT"}},
 	}
 }
 

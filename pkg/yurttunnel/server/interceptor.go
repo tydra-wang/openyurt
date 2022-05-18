@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/openyurtio/openyurt/pkg/yurttunnel/constants"
+	"github.com/openyurtio/openyurt/pkg/yurttunnel/util"
 
 	"k8s.io/apimachinery/pkg/util/httpstream"
 	"k8s.io/apiserver/pkg/util/flushwriter"
@@ -64,7 +65,7 @@ func putBufioReader(br *bufio.Reader) {
 // prometheus and metric server, setup proxy tunnel to kubelet, sends requests
 // through the tunnel and sends responses back to the master
 type RequestInterceptor struct {
-	contextDialer func(addr string, header http.Header, isTLS bool) (net.Conn, error)
+	contextDialer func(addr string, header http.Header, isTLS, isIPv6 bool) (net.Conn, error)
 }
 
 // NewRequestInterceptor creates a interceptor object that intercept request from kube-apiserver
@@ -74,7 +75,7 @@ func NewRequestInterceptor(udsSockFile string, cfg *tls.Config) *RequestIntercep
 	}
 
 	cfg.InsecureSkipVerify = true
-	contextDialer := func(addr string, header http.Header, isTLS bool) (net.Conn, error) {
+	contextDialer := func(addr string, header http.Header, isTLS, isIPv6 bool) (net.Conn, error) {
 		klog.V(4).Infof("Sending request to %q.", addr)
 		proxyConn, err := net.Dial("unix", udsSockFile)
 		if err != nil {
@@ -88,7 +89,12 @@ func NewRequestInterceptor(udsSockFile string, cfg *tls.Config) *RequestIntercep
 			}
 		}
 
-		fmt.Fprintf(proxyConn, "CONNECT %s HTTP/1.1\r\nHost: %s%s\r\n\r\n", addr, "127.0.0.1", connectHeaders)
+		loopbackAddr := "127.0.0.1"
+		if isIPv6 {
+			loopbackAddr = "::1"
+		}
+
+		fmt.Fprintf(proxyConn, "CONNECT %s HTTP/1.1\r\nHost: %s%s\r\n\r\n", addr, loopbackAddr, connectHeaders)
 		br := newBufioReader(proxyConn)
 		defer putBufioReader(br)
 		res, err := http.ReadResponse(br, nil)
@@ -140,8 +146,12 @@ func klogAndHTTPError(w http.ResponseWriter, errCode int, format string, i ...in
 // ServeHTTP will proxy the request to the tunnel and return response from tunnel back
 // to the client
 func (ri *RequestInterceptor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	isIPv6, err := util.IsIPv6Request(r)
+	if err != nil {
+		klog.Errorf("failed to check if request from IPv6 client: %v", err)
+	}
 	// 1. setup the tunnel
-	tunnelConn, err := ri.contextDialer(r.Host, r.Header, r.TLS != nil)
+	tunnelConn, err := ri.contextDialer(r.Host, r.Header, r.TLS != nil, isIPv6)
 	if err != nil {
 		klogAndHTTPError(w, http.StatusServiceUnavailable,
 			"fail to setup the tunnel: %s", err)

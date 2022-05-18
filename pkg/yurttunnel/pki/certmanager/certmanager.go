@@ -54,7 +54,7 @@ func NewYurttunnelServerCertManager(
 		ips      = []net.IP{}
 		err      error
 	)
-	_ = wait.PollUntil(5*time.Second, func() (bool, error) {
+	werr := wait.PollUntil(5*time.Second, func() (bool, error) {
 		dnsNames, ips, err = serveraddr.GetYurttunelServerDNSandIP(clientset)
 		if err != nil {
 			return false, err
@@ -76,6 +76,9 @@ func NewYurttunnelServerCertManager(
 
 		return true, nil
 	}, stopCh)
+	if werr != nil {
+		return nil, werr
+	}
 	// add user specified DNS anems and IP addresses
 	dnsNames = append(dnsNames, clCertNames...)
 	ips = append(ips, clIPs...)
@@ -92,6 +95,7 @@ func NewYurttunnelServerCertManager(
 			certificates.UsageKeyEncipherment,
 			certificates.UsageDigitalSignature,
 			certificates.UsageServerAuth,
+			certificates.UsageClientAuth,
 		},
 		ips)
 }
