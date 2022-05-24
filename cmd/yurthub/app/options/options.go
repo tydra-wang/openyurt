@@ -17,12 +17,14 @@ limitations under the License.
 package options
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
 	"time"
 
 	"github.com/spf13/pflag"
+	utilnet "k8s.io/utils/net"
 
 	"github.com/openyurtio/openyurt/pkg/projectinfo"
 	"github.com/openyurtio/openyurt/pkg/yurthub/storage/disk"
@@ -123,6 +125,10 @@ func ValidateOptions(options *YurtHubOptions) error {
 
 	if !util.IsSupportedWorkingMode(util.WorkingMode(options.WorkingMode)) {
 		return fmt.Errorf("working mode %s is not supported", options.WorkingMode)
+	}
+
+	if options.EnableDummyIf && utilnet.IsIPv6String(options.YurtHubHost) {
+		return errors.New("dummy ip not supported in ipv6")
 	}
 
 	if err := verifyDummyIP(options.HubAgentDummyIfIP); err != nil {
